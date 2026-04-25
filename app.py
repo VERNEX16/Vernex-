@@ -3,7 +3,7 @@ import requests
 
 app = Flask(__name__)
 
-VALID_KEYS = ["Anonymous"]
+BASE_URL = "https://yash-code-with-ai.alphamovies.workers.dev/"
 
 @app.route("/")
 def home():
@@ -12,51 +12,41 @@ def home():
 @app.route("/api/numinfo")
 def numinfo():
     num = request.args.get("num")
-    key = request.args.get("key")
-
-    if key not in VALID_KEYS:
-        return jsonify({
-            "status": "error",
-            "message": "Invalid API key"
-        })
 
     if not num:
-        return jsonify({
-            "status": "error",
-            "message": "Missing 'num'"
-        })
-
-    external_url = "https://cyber-osint-num-infos.vercel.app/api/numinfo"
+        return jsonify({"error": "Number is required"})
 
     try:
-        res = requests.get(external_url, params={
-            "key": "Anonymous",
-            "num": num
+        res = requests.get(BASE_URL, params={
+            "num": num,
+            "key": "7189814021"
         }, timeout=10)
 
         data = res.json()
 
-        # 🔥 REMOVE EXACT KEYS (TOP LEVEL)
-        data.pop("Owner", None)
-        data.pop("Dm to buy access", None)
+        # ❌ Remove unwanted fields
+        remove_keys = [
+            "branding",
+            "developer",
+            "processed_by",
+            "owner_contact",
+            "owner",
+            "dm"
+        ]
 
-        # 🔥 CLEAN INSIDE RESULTS (if any unwanted keys exist)
-        if "results" in data:
-            for item in data["results"]:
-                item.pop("Owner", None)
-                item.pop("Dm to buy access", None)
+        for key in remove_keys:
+            data.pop(key, None)
 
-        # ✅ ADD YOUR BRAND
+        # ✅ Add your branding
         data["powered_by"] = "Vernex API ⚡"
 
         return jsonify(data)
 
     except Exception as e:
         return jsonify({
-            "status": "error",
-            "message": "API failed",
-            "error": str(e)
+            "error": "API failed",
+            "details": str(e)
         })
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
