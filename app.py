@@ -9,9 +9,10 @@ def home():
 
 @app.route("/api/numinfo")
 def numinfo():
-    key = request.args.get("key")
     num = request.args.get("num")
+    key = request.args.get("key")
 
+    # Your API key check
     if key != "Anonymous":
         return jsonify({
             "status": "error",
@@ -21,6 +22,7 @@ def numinfo():
     external_url = "https://cyber-osint-num-infos.vercel.app/api/numinfo"
 
     try:
+        # 🔗 Call external API
         res = requests.get(external_url, params={
             "key": "Anonymous",
             "num": num
@@ -28,24 +30,15 @@ def numinfo():
 
         data = res.json()
 
-        # ✅ Clean + forward response
-        if data.get("status") == "success":
-            return jsonify({
-                "status": "success",
-                "data": data.get("data"),
-                "powered_by": "Vernex API ⚡"
-            })
+        # ✅ FULL RESPONSE (no change)
+        # just add your name
+        data["powered_by"] = "Vernex API ⚡"
 
-        else:
-            return jsonify({
-                "status": data.get("status"),
-                "message": data.get("message"),
-                "powered_by": "Vernex API ⚡"
-            })
+        return jsonify(data)
 
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": "External API failed",
-            "powered_by": "Vernex API ⚡"
+            "error": str(e)
         })
