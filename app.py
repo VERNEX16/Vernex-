@@ -1,10 +1,8 @@
 from flask import Flask, request, jsonify
 import requests
-import os
 
 app = Flask(__name__)
 
-# API KEY (change if needed)
 VALID_KEYS = ["Anonymous"]
 
 @app.route("/")
@@ -16,18 +14,16 @@ def numinfo():
     num = request.args.get("num")
     key = request.args.get("key")
 
-    # ❌ Invalid key
     if key not in VALID_KEYS:
         return jsonify({
             "status": "error",
             "message": "Invalid API key"
         })
 
-    # ❌ Missing number
     if not num:
         return jsonify({
             "status": "error",
-            "message": "Missing 'num' parameter"
+            "message": "Missing 'num'"
         })
 
     external_url = "https://cyber-osint-num-infos.vercel.app/api/numinfo"
@@ -38,28 +34,19 @@ def numinfo():
             "num": num
         }, timeout=10)
 
-        if res.status_code != 200:
-            return jsonify({
-                "status": "error",
-                "message": "External API error",
-                "code": res.status_code
-            })
-
         data = res.json()
 
-        # 🔥 REMOVE unwanted fields
-        data.pop("owner", None)
-        data.pop("dm", None)
-        data.pop("contact", None)
+        # 🔥 REMOVE EXACT KEYS (TOP LEVEL)
+        data.pop("Owner", None)
+        data.pop("Dm to buy access", None)
 
-        # 🔥 Clean inside results
+        # 🔥 CLEAN INSIDE RESULTS (if any unwanted keys exist)
         if "results" in data:
             for item in data["results"]:
-                item.pop("owner", None)
-                item.pop("dm", None)
-                item.pop("contact", None)
+                item.pop("Owner", None)
+                item.pop("Dm to buy access", None)
 
-        # ✅ ADD YOUR NAME
+        # ✅ ADD YOUR BRAND
         data["powered_by"] = "Vernex API ⚡"
 
         return jsonify(data)
@@ -67,7 +54,7 @@ def numinfo():
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": "External API failed",
+            "message": "API failed",
             "error": str(e)
         })
 
