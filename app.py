@@ -1,32 +1,75 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 
 app = Flask(__name__)
+
+# API KEY (change if needed)
+VALID_KEYS = ["Anonymous"]
+
+@app.route("/")
+def home():
+    return "Vernex API LIVE 🚀"
 
 @app.route("/api/numinfo")
 def numinfo():
     num = request.args.get("num")
     key = request.args.get("key")
 
-    if key != "Anonymous":
+    # ❌ Invalid key
+    if key not in VALID_KEYS:
         return jsonify({
             "status": "error",
             "message": "Invalid API key"
         })
 
-    res = requests.get(
-        "https://cyber-osint-num-infos.vercel.app/api/numinfo",
-        params={"key": "Anonymous", "num": num},
-        timeout=10
-    )
+    # ❌ Missing number
+    if not num:
+        return jsonify({
+            "status": "error",
+            "message": "Missing 'num' parameter"
+        })
 
-    data = res.json()
+    external_url = "https://cyber-osint-num-infos.vercel.app/api/numinfo"
 
-    # ✅ ONLY REMOVE THESE TWO KEYS
-    data.pop("Owner", None)
-    data.pop("Dm to buy access", None)
+    try:
+        res = requests.get(external_url, params={
+            "key": "Anonymous",
+            "num": num
+        }, timeout=10)
 
-    # ✅ ADD YOUR NAME ONLY
-    data["powered_by"] = "Vernex API ⚡"
+        if res.status_code != 200:
+            return jsonify({
+                "status": "error",
+                "message": "External API error",
+                "code": res.status_code
+            })
 
-    return jsonify(data)
+        data = res.json()
+
+        # 🔥 REMOVE unwanted fields
+        data.pop("owner", None)
+        data.pop("dm", None)
+        data.pop("contact", None)
+
+        # 🔥 Clean inside results
+        if "results" in data:
+            for item in data["results"]:
+                item.pop("owner", None)
+                item.pop("dm", None)
+                item.pop("contact", None)
+
+        # ✅ ADD YOUR NAME
+        data["powered_by"] = "Vernex API ⚡"
+
+        return jsonify(data)
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "External API failed",
+            "error": str(e)
+        })
+
+if __name__ == "__main__":
+    app.run(debug=True)
