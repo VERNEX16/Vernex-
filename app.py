@@ -1,141 +1,159 @@
 from flask import Flask, request, jsonify
 import requests
-import sqlite3
+import json
 import time
 import random
 import string
+import os
 
 app = Flask(__name__)
 
+# =========================
 # 🔗 BACKEND API
-BACKEND_URL = "https://mean-folders-athletic-divide.trycloudflare.com/search/number"
-BACKEND_KEY = "Mauryaji12"
+# =========================
+BACKEND_API = "https://ft-osint-api.duckdns.org/api/number"
+BACKEND_KEY = "ft-rahun2m"
 
-# ---------------- DATABASE ----------------
-def init_db():
-    conn = sqlite3.connect("keys.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS keys (
-            key TEXT PRIMARY KEY,
-            expiry REAL
-        )
-    """)
-    conn.commit()
-    conn.close()
+# =========================
+# 🔑 KEY STORAGE
+# =========================
+KEYS_FILE = "keys.json"
 
-init_db()
+if not os.path.exists(KEYS_FILE):
+    with open(KEYS_FILE, "w") as f:
+        json.dump({}, f)
 
-# ---------------- KEY GENERATOR ----------------
-def generate_key(days):
-    key = "VERNX-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
-    expiry = time.time() + (days * 86400)
+def load_keys():
+    with open(KEYS_FILE, "r") as f:
+        return json.load(f)
 
-    conn = sqlite3.connect("keys.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO keys VALUES (?, ?)", (key, expiry))
-    conn.commit()
-    conn.close()
+def save_keys(data):
+    with open(KEYS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-    return key, expiry
+# =========================
+# 🔐 GENERATE KEY
+# =========================
+def generate_key():
+    return "VERNEX-" + ''.join(
+        random.choices(string.ascii_uppercase + string.digits, k=10)
+    )
 
-# ---------------- KEY VALIDATION ----------------
-def is_valid(key):
-    conn = sqlite3.connect("keys.db")
-    c = conn.cursor()
-    c.execute("SELECT expiry FROM keys WHERE key=?", (key,))
-    row = c.fetchone()
-    conn.close()
-
-    if not row:
-        return False
-
-    return time.time() < row[0]
-
-# ---------------- CLEAN RESPONSE ----------------
-def clean_data(data):
-    remove_keys = ["owner", "developer", "branding", "processed_by"]
-
-    if isinstance(data, dict):
-        return {
-            k: clean_data(v)
-            for k, v in data.items()
-            if k not in remove_keys
-        }
-    elif isinstance(data, list):
-        return [clean_data(i) for i in data]
-
-    return data
-
-# ---------------- ROUTES ----------------
-
+# =========================
+# 🌐 HOME
+# =========================
 @app.route("/")
 def home():
-    return "VERNX API LIVE 🚀"
+    return jsonify({
+        "owner": "VERNEX",
+        "status": "RUNNING"
+    })
 
-# 🔑 GENERATE KEY (ANY DAYS)
+# =========================
+# 🔑 GENERATE API KEY
+# =========================
 @app.route("/generate")
 def generate():
-    plan = request.args.get("plan")
 
-    if not plan:
-        return jsonify({"error": "Use format like 4d, 10d"})
+    days = request.args.get("days")
+
+    if not days:
+        return jsonify({
+            "error": "Missing days"
+        }), 400
 
     try:
-        if plan.endswith("d"):
-            days = int(plan[:-1])
-
-            if days <= 0:
-                return jsonify({"error": "Days must be > 0"})
-        else:
-            return jsonify({"error": "Invalid format (use 4d, 5d)"})
-
-        key, expiry = generate_key(days)
-
-        return jsonify({
-            "key": key,
-            "valid_days": days,
-            "expires_at": expiry
-        })
-
+        days = int(days)
     except:
-        return jsonify({"error": "Invalid input"})
+        return jsonify({
+            "error": "Invalid days"
+        }), 400
 
-# 📞 MAIN API
+    key = generate_key()
+
+    expiry = int(time.time()) + (days * 86400)
+
+    keys = load_keys()
+
+    keys[key] = {
+        "expiry": expiry,
+        "days": days
+    }
+
+    save_keys(keys)
+
+    return jsonify({
+        "owner": "VERNEX",
+        "key": key,
+        "validity_days": days,
+        "expires_at": expiry
+    })
+
+# =========================
+# 📞 FRONT API
+# =========================
 @app.route("/api/numinfo")
 def numinfo():
+
     num = request.args.get("num")
     key = request.args.get("key")
 
     if not num:
-        return jsonify({"error": "Number required"})
+        return jsonify({
+            "error": "Missing num"
+        }), 400
 
-    if not key or not is_valid(key):
-        return jsonify({"error": "Invalid or expired key"})
+    if not key:
+        return jsonify({
+            "error": "Missing API key"
+        }), 401
+
+    keys = load_keys()
+
+    if key not in keys:
+        return jsonify({
+            "error": "Invalid API key"
+        }), 403
+
+    if int(time.time()) > keys[key]["expiry"]:
+        return jsonify({
+            "error": "API key expired"
+        }), 403
 
     try:
-        # 🔥 CALL BACKEND API
-        res = requests.get(BACKEND_URL, params={
-            "key": BACKEND_KEY,
-            "number": num
-        }, timeout=10)
 
-        raw = res.json()
+        response = requests.get(
+            BACKEND_API,
+            params={
+                "key": BACKEND_KEY,
+                "num": num
+            },
+            timeout=30
+        )
 
-        # 🧹 CLEAN DATA
-        data = clean_data(raw)
+        data = response.json()
 
-        # ✅ ADD YOUR NAME
-        data["owner"] = "VERNX"
+        # ❌ Remove backend branding
+        if isinstance(data, dict):
+            data.pop("by", None)
+            data.pop("channel", None)
 
-        return jsonify(data)
+        # ✅ Your branding
+        return jsonify({
+            "owner": "VERNEX",
+            "powered_by": "VERNEX API",
+            "success": True,
+            "result": data
+        })
 
     except Exception as e:
         return jsonify({
-            "error": "Backend failed",
-            "details": str(e)
-        })
+            "success": False,
+            "error": str(e)
+        }), 500
 
-# ---------------- RUN ----------------
+# =========================
+# ▶️ RUN
+# =========================
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000)
