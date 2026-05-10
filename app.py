@@ -1,248 +1,110 @@
 from flask import Flask, request, jsonify
 import requests
 import json
-import time
-import random
-import string
 import os
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# =========================================
-# ⚡ VERNEX CONFIG
-# =========================================
-OWNER = "VERNEX"
-POWERED = "VERNEX API"
-
-# =========================================
-# 🌐 BACKEND API
-# =========================================
-BACKEND_API = "https://ft-osint-api.duckdns.org/api/number"
-BACKEND_KEY = "ft-rahun2m"
-
-# =========================================
-# 📁 DATABASE
-# =========================================
 KEYS_FILE = "keys.json"
 
+# Create keys.json automatically
 if not os.path.exists(KEYS_FILE):
     with open(KEYS_FILE, "w") as f:
         json.dump({}, f)
 
-# =========================================
-# 📖 LOAD KEYS
-# =========================================
+# Load Keys
 def load_keys():
-    try:
-        with open(KEYS_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    with open(KEYS_FILE, "r") as f:
+        return json.load(f)
 
-# =========================================
-# 💾 SAVE KEYS
-# =========================================
+# Save Keys
 def save_keys(data):
     with open(KEYS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# =========================================
-# 🔑 GENERATE KEY
-# =========================================
-def generate_key():
-    return "VERNEX-" + ''.join(
-        random.choices(
-            string.ascii_uppercase + string.digits,
-            k=12
-        )
-    )
-
-# =========================================
-# 📅 FORMAT TIME
-# =========================================
-def format_time(ts):
-    return datetime.fromtimestamp(ts).strftime(
-        "%d-%m-%Y %I:%M:%S %p"
-    )
-
-# =========================================
-# 🌐 HOME
-# =========================================
-@app.route("/")
-def home():
-    return jsonify({
-        "owner": OWNER,
-        "powered_by": POWERED,
-        "status": "RUNNING",
-        "message": "VERNEX NUMBER API ACTIVE"
-    })
-
-# =========================================
-# 🔑 GENERATE API KEY
-# =========================================
-@app.route("/generate")
-def generate():
-
-    days = request.args.get("days")
-
-    if not days:
-        return jsonify({
-            "success": False,
-            "error": "Missing days parameter"
-        }), 400
-
-    try:
-        days = int(days)
-    except:
-        return jsonify({
-            "success": False,
-            "error": "Days must be number"
-        }), 400
-
-    if days <= 0:
-        return jsonify({
-            "success": False,
-            "error": "Days must be greater than 0"
-        }), 400
-
-    current_time = int(time.time())
-
-    # ✅ REAL EXPIRY
-    expires_at = current_time + (days * 86400)
-
-    api_key = generate_key()
-
-    keys = load_keys()
-
-    keys[api_key] = {
-        "created_at": current_time,
-        "expires_at": expires_at,
-        "days": days
-    }
-
-    save_keys(keys)
-
-    return jsonify({
-        "owner": OWNER,
-        "powered_by": POWERED,
-        "success": True,
-        "key": api_key,
-        "validity_days": days,
-        "created_at": format_time(current_time),
-        "expires_at": format_time(expires_at)
-    })
-
-# =========================================
-# 🔒 VALIDATE KEY
-# =========================================
+# Validate API Key
 def validate_key(api_key):
 
     keys = load_keys()
 
     if api_key not in keys:
-        return False, {
-            "success": False,
-            "error": "Invalid API key"
-        }
+        return False
 
-    key_data = keys[api_key]
+    expiry = datetime.fromisoformat(keys[api_key]["expiry"])
 
-    current_time = int(time.time())
-
-    expires_at = key_data["expires_at"]
-
-    # ❌ EXPIRED
-    if current_time >= expires_at:
-
+    # Expired
+    if datetime.utcnow() > expiry:
         del keys[api_key]
         save_keys(keys)
+        return False
 
-        return False, {
-            "success": False,
-            "error": "API key expired",
-            "expired_at": format_time(expires_at)
-        }
+    return True
 
-    return True, key_data
+# Generate Key
+@app.route("/generate-key")
+def generate_key():
 
-# =========================================
-# 📞 NUMBER INFO API
-# =========================================
-@app.route("/api/numinfo")
-def numinfo():
+    days = request.args.get("days", default=1, type=int)
 
-    number = request.args.get("num")
+    api_key = "vernex-day-" + secrets.token_hex(8)
+
+    expiry = datetime.utcnow() + timedelta(days=days)
+
+    keys = load_keys()
+
+    keys[api_key] = {
+        "expiry": expiry.isoformat()
+    }
+
+    save_keys(keys)
+
+    return jsonify({
+        "success": True,
+        "api_key": api_key,
+        "expires_at": expiry.isoformat(),
+        "valid_days": days
+    })
+
+# Your Main API
+@app.route("/api/number")
+def number_lookup():
+
     api_key = request.args.get("key")
+    number = request.args.get("num")
 
-    # Missing number
-    if not number:
-        return jsonify({
-            "success": False,
-            "error": "Missing number"
-        }), 400
-
-    # Missing key
     if not api_key:
         return jsonify({
             "success": False,
-            "error": "Missing API key"
-        }), 401
+            "error": "API Key Required"
+        })
 
-    # Validate
-    valid, data = validate_key(api_key)
+    if not validate_key(api_key):
+        return jsonify({
+            "success": False,
+            "error": "Invalid or Expired API Key"
+        })
 
-    if not valid:
-        return jsonify(data), 403
+    if not number:
+        return jsonify({
+            "success": False,
+            "error": "Phone Number Required"
+        })
 
     try:
 
-        # =========================================
-        # 🌐 BACKEND REQUEST
-        # =========================================
-        response = requests.get(
-            BACKEND_API,
-            params={
-                "key": BACKEND_KEY,
-                "num": number
-            },
-            timeout=30
-        )
+        target_url = f"https://ft-osint-api.duckdns.org/api/number?key=ft-rahun2m&num={number}"
 
-        backend_data = response.json()
+        response = requests.get(target_url)
 
-        # =========================================
-        # ❌ REMOVE BACKEND BRANDING
-        # =========================================
-        if isinstance(backend_data, dict):
-            backend_data.pop("by", None)
-            backend_data.pop("channel", None)
+        data = response.json()
 
-        current_time = int(time.time())
-
-        remaining = data["expires_at"] - current_time
-
-        # =========================================
-        # ✅ FINAL RESPONSE
-        # =========================================
         return jsonify({
-            "owner": OWNER,
-            "powered_by": POWERED,
             "success": True,
-
-            "api_key": {
-                "valid": True,
-                "days": data["days"],
-                "created_at": format_time(
-                    data["created_at"]
-                ),
-                "expires_at": format_time(
-                    data["expires_at"]
-                ),
-                "remaining_seconds": remaining
-            },
-
-            "result": backend_data
+            "owner": "VERNEX",
+            "searched_number": number,
+            "result": data
         })
 
     except Exception as e:
@@ -250,13 +112,19 @@ def numinfo():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 500
+        })
 
-# =========================================
-# ▶️ RUN
-# =========================================
+# Home Page
+@app.route("/")
+def home():
+    return jsonify({
+        "owner": "VERNEX",
+        "status": "ONLINE",
+        "routes": {
+            "generate_key": "/generate-key?days=1",
+            "api": "/api/number?key=YOUR_KEY&num=9876543210"
+        }
+    })
+
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=5000
-    )
+    app.run(debug=True)
