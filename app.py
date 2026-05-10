@@ -8,9 +8,9 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# =========================
+# =========================================
 # 📁 DATABASE FILE
-# =========================
+# =========================================
 KEYS_FILE = "keys.json"
 
 # Create file if missing
@@ -18,9 +18,9 @@ if not os.path.exists(KEYS_FILE):
     with open(KEYS_FILE, "w") as f:
         json.dump({}, f)
 
-# =========================
+# =========================================
 # 📖 LOAD KEYS
-# =========================
+# =========================================
 def load_keys():
     try:
         with open(KEYS_FILE, "r") as f:
@@ -28,16 +28,16 @@ def load_keys():
     except:
         return {}
 
-# =========================
+# =========================================
 # 💾 SAVE KEYS
-# =========================
+# =========================================
 def save_keys(data):
     with open(KEYS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# =========================
-# 🔑 GENERATE KEY
-# =========================
+# =========================================
+# 🔑 GENERATE RANDOM KEY
+# =========================================
 def generate_key():
     return "VERNEX-" + ''.join(
         random.choices(
@@ -46,17 +46,17 @@ def generate_key():
         )
     )
 
-# =========================
-# 📅 FORMAT TIME
-# =========================
+# =========================================
+# 📅 FORMAT DATE
+# =========================================
 def format_time(ts):
     return datetime.fromtimestamp(ts).strftime(
         "%d-%m-%Y %I:%M:%S %p"
     )
 
-# =========================
+# =========================================
 # 🌐 HOME
-# =========================
+# =========================================
 @app.route("/")
 def home():
     return jsonify({
@@ -65,43 +65,50 @@ def home():
         "message": "VERNEX API ACTIVE"
     })
 
-# =========================
-# 🔑 GENERATE KEY
-# =========================
+# =========================================
+# 🔑 GENERATE API KEY
+# =========================================
 @app.route("/generate")
 def generate():
 
     days = request.args.get("days")
 
+    # Missing days
     if not days:
         return jsonify({
             "success": False,
-            "error": "Missing days"
+            "error": "Missing days parameter"
         }), 400
 
+    # Invalid number
     try:
         days = int(days)
     except:
         return jsonify({
             "success": False,
-            "error": "Invalid days"
+            "error": "Days must be number"
         }), 400
 
+    # Negative or zero
     if days <= 0:
         return jsonify({
             "success": False,
             "error": "Days must be greater than 0"
         }), 400
 
+    # Current time
     current_time = int(time.time())
 
     # ✅ REAL EXPIRY
     expires_at = current_time + (days * 86400)
 
+    # Generate key
     api_key = generate_key()
 
+    # Load keys
     keys = load_keys()
 
+    # Save key
     keys[api_key] = {
         "created_at": current_time,
         "expires_at": expires_at,
@@ -119,23 +126,25 @@ def generate():
         "expires_at": format_time(expires_at)
     })
 
-# =========================
-# 🔒 PROTECTED API
-# =========================
+# =========================================
+# 🔒 VALIDATED API
+# =========================================
 @app.route("/api/data")
 def api_data():
 
     api_key = request.args.get("key")
 
+    # Missing key
     if not api_key:
         return jsonify({
             "success": False,
             "error": "Missing API key"
         }), 401
 
+    # Load keys
     keys = load_keys()
 
-    # ❌ INVALID KEY
+    # Invalid key
     if api_key not in keys:
         return jsonify({
             "success": False,
@@ -148,7 +157,7 @@ def api_data():
 
     expires_at = key_data["expires_at"]
 
-    # ❌ EXPIRED
+    # Expired key
     if current_time >= expires_at:
 
         del keys[api_key]
@@ -162,7 +171,7 @@ def api_data():
 
     remaining = expires_at - current_time
 
-    # ✅ SUCCESS
+    # Success
     return jsonify({
         "owner": "VERNEX",
         "success": True,
@@ -180,13 +189,13 @@ def api_data():
         },
 
         "data": {
-            "message": "Protected API working"
+            "message": "Protected API working correctly"
         }
     })
 
-# =========================
+# =========================================
 # ▶️ RUN
-# =========================
+# =========================================
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
