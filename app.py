@@ -9,22 +9,18 @@ app = Flask(__name__)
 
 KEYS_FILE = "keys.json"
 
-# Create keys.json automatically
 if not os.path.exists(KEYS_FILE):
     with open(KEYS_FILE, "w") as f:
         json.dump({}, f)
 
-# Load Keys
 def load_keys():
     with open(KEYS_FILE, "r") as f:
         return json.load(f)
 
-# Save Keys
 def save_keys(data):
     with open(KEYS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# Validate API Key
 def validate_key(api_key):
 
     keys = load_keys()
@@ -34,7 +30,6 @@ def validate_key(api_key):
 
     expiry = datetime.fromisoformat(keys[api_key]["expiry"])
 
-    # Expired
     if datetime.utcnow() > expiry:
         del keys[api_key]
         save_keys(keys)
@@ -42,7 +37,6 @@ def validate_key(api_key):
 
     return True
 
-# Generate Key
 @app.route("/generate-key")
 def generate_key():
 
@@ -62,12 +56,12 @@ def generate_key():
 
     return jsonify({
         "success": True,
+        "owner": "VERNEX",
         "api_key": api_key,
         "expires_at": expiry.isoformat(),
         "valid_days": days
     })
 
-# Your Main API
 @app.route("/api/number")
 def number_lookup():
 
@@ -114,16 +108,11 @@ def number_lookup():
             "error": str(e)
         })
 
-# Home Page
 @app.route("/")
 def home():
     return jsonify({
         "owner": "VERNEX",
-        "status": "ONLINE",
-        "routes": {
-            "generate_key": "/generate-key?days=1",
-            "api": "/api/number?key=YOUR_KEY&num=9876543210"
-        }
+        "status": "ONLINE"
     })
 
 if __name__ == "__main__":
