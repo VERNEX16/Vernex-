@@ -1,18 +1,12 @@
 from flask import Flask, request, jsonify
-import requests
 import json
 import time
 import random
 import string
 import os
+from datetime import datetime
 
 app = Flask(__name__)
-
-# =========================
-# 🔗 BACKEND API
-# =========================
-BACKEND_API = "https://ft-osint-api.duckdns.org/api/number"
-BACKEND_KEY = "ft-rahun2m"
 
 # =========================
 # 📁 DATABASE FILE
@@ -53,6 +47,14 @@ def generate_key():
     )
 
 # =========================
+# 📅 FORMAT TIME
+# =========================
+def format_time(ts):
+    return datetime.fromtimestamp(ts).strftime(
+        "%d-%m-%Y %I:%M:%S %p"
+    )
+
+# =========================
 # 🌐 HOME
 # =========================
 @app.route("/")
@@ -64,7 +66,7 @@ def home():
     })
 
 # =========================
-# 🔑 GENERATE API KEY
+# 🔑 GENERATE KEY
 # =========================
 @app.route("/generate")
 def generate():
@@ -74,7 +76,7 @@ def generate():
     if not days:
         return jsonify({
             "success": False,
-            "error": "Missing days parameter"
+            "error": "Missing days"
         }), 400
 
     try:
@@ -91,22 +93,18 @@ def generate():
             "error": "Days must be greater than 0"
         }), 400
 
-    # Current timestamp
     current_time = int(time.time())
 
-    # REAL expiry
-    expiry_time = current_time + (days * 24 * 60 * 60)
+    # ✅ REAL EXPIRY
+    expires_at = current_time + (days * 86400)
 
-    # Generate API key
     api_key = generate_key()
 
-    # Load old keys
     keys = load_keys()
 
-    # Save new key
     keys[api_key] = {
         "created_at": current_time,
-        "expiry": expiry_time,
+        "expires_at": expires_at,
         "days": days
     }
 
@@ -117,92 +115,80 @@ def generate():
         "success": True,
         "key": api_key,
         "validity_days": days,
-        "created_at": current_time,
-        "expires_at": expiry_time
+        "created_at": format_time(current_time),
+        "expires_at": format_time(expires_at)
     })
 
 # =========================
-# 📞 FRONT API
+# 🔒 PROTECTED API
 # =========================
-@app.route("/api/numinfo")
-def numinfo():
+@app.route("/api/data")
+def api_data():
 
-    number = request.args.get("num")
     api_key = request.args.get("key")
 
-    # Check number
-    if not number:
-        return jsonify({
-            "success": False,
-            "error": "Missing number"
-        }), 400
-
-    # Check key
     if not api_key:
         return jsonify({
             "success": False,
             "error": "Missing API key"
         }), 401
 
-    # Load keys
     keys = load_keys()
 
-    # Invalid key
+    # ❌ INVALID KEY
     if api_key not in keys:
         return jsonify({
             "success": False,
             "error": "Invalid API key"
         }), 403
 
-    # Current time
+    key_data = keys[api_key]
+
     current_time = int(time.time())
 
-    # Expiry
-    expiry_time = keys[api_key]["expiry"]
+    expires_at = key_data["expires_at"]
 
-    # REAL expiry validation
-    if current_time >= expiry_time:
+    # ❌ EXPIRED
+    if current_time >= expires_at:
+
+        del keys[api_key]
+        save_keys(keys)
+
         return jsonify({
             "success": False,
-            "error": "API key expired"
+            "error": "API key expired",
+            "expired_at": format_time(expires_at)
         }), 403
 
-    try:
+    remaining = expires_at - current_time
 
-        # Backend request
-        response = requests.get(
-            BACKEND_API,
-            params={
-                "key": BACKEND_KEY,
-                "num": number
-            },
-            timeout=30
-        )
+    # ✅ SUCCESS
+    return jsonify({
+        "owner": "VERNEX",
+        "success": True,
 
-        data = response.json()
+        "api_key": {
+            "valid": True,
+            "days": key_data["days"],
+            "created_at": format_time(
+                key_data["created_at"]
+            ),
+            "expires_at": format_time(
+                expires_at
+            ),
+            "remaining_seconds": remaining
+        },
 
-        # Remove backend branding
-        if isinstance(data, dict):
-            data.pop("by", None)
-            data.pop("channel", None)
-
-        return jsonify({
-            "owner": "VERNEX",
-            "powered_by": "VERNEX API",
-            "success": True,
-            "key_valid": True,
-            "valid_until": expiry_time,
-            "result": data
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+        "data": {
+            "message": "Protected API working"
+        }
+    })
 
 # =========================
 # ▶️ RUN
 # =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(
+        host="0.0.0.0",
+        port=5000
+    )
