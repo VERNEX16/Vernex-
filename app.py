@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 KEYS_FILE = "keys.json"
 
-# Create keys file automatically
+# Create keys.json automatically
 if not os.path.exists(KEYS_FILE):
     with open(KEYS_FILE, "w") as f:
         json.dump({}, f)
@@ -24,7 +24,7 @@ def save_keys(data):
     with open(KEYS_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# Validate API key
+# Validate key
 def validate_key(api_key):
 
     keys = load_keys()
@@ -34,7 +34,7 @@ def validate_key(api_key):
 
     expiry = datetime.fromisoformat(keys[api_key]["expiry"])
 
-    # Remove expired key
+    # Remove expired keys
     if datetime.utcnow() > expiry:
         del keys[api_key]
         save_keys(keys)
@@ -42,7 +42,7 @@ def validate_key(api_key):
 
     return True
 
-# Generate key route
+# Generate API Key
 @app.route("/generate-key")
 def generate_key():
 
@@ -68,7 +68,7 @@ def generate_key():
         "valid_days": days
     })
 
-# Main API route
+# Main API
 @app.route("/api/number")
 def number_lookup():
 
@@ -101,6 +101,14 @@ def number_lookup():
 
         data = response.json()
 
+        # Completely remove unwanted fields
+        if isinstance(data, dict):
+
+            data.pop("by", None)
+            data.pop("channel", None)
+            data.pop("cached", None)
+            data.pop("cached_at", None)
+
         return jsonify({
             "success": True,
             "owner": "VERNEX",
@@ -120,11 +128,7 @@ def number_lookup():
 def home():
     return jsonify({
         "owner": "VERNEX",
-        "status": "ONLINE",
-        "routes": {
-            "generate_key": "/generate-key?days=1",
-            "api": "/api/number?key=YOUR_KEY&num=9876543210"
-        }
+        "status": "ONLINE"
     })
 
 # Run server
